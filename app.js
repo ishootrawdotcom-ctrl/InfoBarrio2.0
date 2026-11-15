@@ -1,5 +1,5 @@
 // =====================================================
-// InfoBarrio OS v2.3 - 100% Datos Reales OpenStreetMap
+// InfoBarrio OS v2.4 - Doble Motor Real (Overpass + Photon OSM)
 // =====================================================
 
 const VALENCIA_COORDS = { lat: 10.2146, lng: -68.0076 };
@@ -14,7 +14,8 @@ const state = {
   watchId: null,
   hasCenteredOnce: false,
   bestAccuracy: Infinity,
-  sheetState: "half"
+  sheetState: "half",
+  scanToken: 0
 };
 
 const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -173,85 +174,167 @@ function setScanningUI(isLoading) {
   dom.scanBtnText.textContent = isLoading ? "BUSCANDO LOCALES REALES..." : "⚡ ESCANEAR LOCALES REALES";
 }
 
-async function fetchOverpass(query) {
+// Motor 1: Overpass API (detalles completos como Instagram, teléfono y horario)
+async function fetchOverpass(lat, lng, radius) {
+  const query = `[out:json][timeout:10];(nwr["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar|pub"](around:${radius},${lat},${lng});nwr["shop"~"bakery|pastry|convenience|supermarket|beverages|butcher|deli"](around:${radius},${lat},${lng}););out center 80;`;
+  const encoded = encodeURIComponent(query);
   const endpoints = [
     "https://overpass-api.de/api/interpreter",
-    "https://lz4.overpass-api.de/api/interpreter",
-    "https://z.overpass-api.de/api/interpreter",
     "https://overpass.private.coffee/api/interpreter"
   ];
-  const encoded = encodeURIComponent(query.replace(/\s+/g, " ").trim());
 
   for (const base of endpoints) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 14000);
+      const timeoutId = setTimeout(() => controller.abort(), 7500);
       const res = await fetch(`${base}?data=${encoded}`, { signal: controller.signal });
       clearTimeout(timeoutId);
       if (res.ok) {
         const json = await res.json();
-        if (Array.isArray(json.elements)) return json;
+        if (Array.isArray(json.elements)) {
+          return json.elements
+            .map((el) => {
+              const pLat = el.lat ?? el.center?.lat;
+              const pLng = el.lon ?? el.center?.lon;
+              const tags = el.tags || {};
+              if (!pLat || !pLng || !tags.name) return null;
+
+              const rawType = tags.amenity || tags.shop || "restaurant";
+              const group = tags.shop ? "shop" : rawType;
+              const typeLabel = CATEGORY_LABELS[rawType] || rawType;
+              const cuisine = tags.cuisine ? tags.cuisine.replace(/;/g, ", ") : typeLabel;
+              const igRaw = tags["contact:instagram"] || tags["instagram"] || null;
+
+              return {
+                id: el.id,
+                name: tags.name,
+                group,
+                typeLabel,
+                cuisine,
+                lat: pLat,
+                lng: pLng,
+                dist: getDistanceMeters(lat, lng, pLat, pLng),
+                igUrl: formatInstagramUrl(igRaw),
+                webRaw: tags["website"] || tags["contact:website"] || null,
+                phone: tags["phone"] || tags["contact:phone"] || tags["contact:whatsapp"] || null,
+                hours: tags["opening_hours"] || null,
+                street: tags["addr:street"] || null
+              };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.dist - b.dist);
+        }
       }
     } catch (_) {}
   }
-  throw new Error("Servidores de OpenStreetMap ocupados");
+  throw new Error("Overpass ocupado");
+}
+
+// Motor 2: Photon OSM (ultrarrápido, sin límites de espera)
+async function fetchPhotonOSM(lat, lng, radius) {
+  const terms = [
+    "restaurante",
+    "comida",
+    "panaderia",
+    "cafe",
+    "supermercado",
+    "pizza",
+    "hamburguesa",
+    "pollo",
+    "arepa",
+    "bodegon"
+  ];
+
+  let anySuccess = false;
+  const requests = terms.map(async (q) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${lat}&lon=${lng}&limit=25`;
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) return [];
+      anySuccess = true;
+      const json = await res.json();
+      return json.features || [];
+    } catch (_) {
+      return [];
+    }
+  });
+
+  const batches = await Promise.all(requests);
+  if (!anySuccess) throw new Error("Sin conexión con servidores de mapas");
+
+  const seen = new Set();
+  const places = [];
+
+  for (const list of batches) {
+    for (const f of list) {
+      const props = f.properties || {};
+      const coords = f.geometry?.coordinates;
+      if (!coords || !props.name) continue;
+      if (props.osm_key !== "amenity" && props.osm_key !== "shop") continue;
+
+      const id = props.osm_id || `${props.name}-${coords[0]}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+
+      const pLng = coords[0];
+      const pLat = coords[1];
+      const dist = getDistanceMeters(lat, lng, pLat, pLng);
+      if (dist > radius) continue;
+
+      const rawType = props.osm_value || "restaurant";
+      const group = props.osm_key === "shop" ? "shop" : rawType;
+      const typeLabel = CATEGORY_LABELS[rawType] || rawType;
+
+      places.push({
+        id,
+        name: props.name,
+        group,
+        typeLabel,
+        cuisine: typeLabel,
+        lat: pLat,
+        lng: pLng,
+        dist,
+        igUrl: null,
+        webRaw: null,
+        phone: null,
+        hours: null,
+        street: props.street || null
+      });
+    }
+  }
+
+  return places.sort((a, b) => a.dist - b.dist);
 }
 
 async function scanArea() {
+  const myToken = ++state.scanToken;
   setScanningUI(true);
   dom.sourceBadge.classList.remove("error");
   dom.sourceBadge.textContent = "BUSCANDO...";
 
-  const query = `[out:json][timeout:15];(node["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar|pub"](around:${state.radius},${state.userLat},${state.userLng});way["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar|pub"](around:${state.radius},${state.userLat},${state.userLng});node["shop"~"bakery|pastry|convenience|supermarket|beverages|butcher|deli"](around:${state.radius},${state.userLat},${state.userLng});way["shop"~"bakery|pastry|convenience|supermarket|beverages|butcher|deli"](around:${state.radius},${state.userLat},${state.userLng}););out center 100;`;
-
   try {
-    const data = await fetchOverpass(query);
-    const parsed = data.elements
-      .map((el) => {
-        const lat = el.lat ?? el.center?.lat;
-        const lng = el.lon ?? el.center?.lon;
-        if (!lat || !lng) return null;
+    let results = [];
+    let sourceLabel = "REAL";
 
-        const tags = el.tags || {};
-        // Ignorar puntos sin nombre real registrado
-        if (!tags.name) return null;
+    try {
+      results = await fetchOverpass(state.userLat, state.userLng, state.radius);
+      sourceLabel = `REAL (${results.length})`;
+    } catch (_) {
+      if (myToken !== state.scanToken) return;
+      dom.sourceBadge.textContent = "MOTOR 2...";
+      results = await fetchPhotonOSM(state.userLat, state.userLng, state.radius);
+      sourceLabel = `OSM (${results.length})`;
+    }
 
-        const rawType = tags.amenity || tags.shop || "restaurant";
-        const group = tags.shop ? "shop" : rawType;
-        const typeLabel = CATEGORY_LABELS[rawType] || rawType;
-        const cuisine = tags.cuisine ? tags.cuisine.replace(/;/g, ", ") : typeLabel;
-
-        const igRaw = tags["contact:instagram"] || tags["instagram"] || null;
-        const igUrl = formatInstagramUrl(igRaw);
-        const webRaw = tags["website"] || tags["contact:website"] || null;
-        const phone = tags["phone"] || tags["contact:phone"] || tags["contact:whatsapp"] || null;
-        const hours = tags["opening_hours"] || null;
-        const street = tags["addr:street"] || null;
-
-        return {
-          id: el.id,
-          name: tags.name,
-          group,
-          typeLabel,
-          cuisine,
-          lat,
-          lng,
-          dist: getDistanceMeters(state.userLat, state.userLng, lat, lng),
-          igRaw,
-          igUrl,
-          webRaw,
-          phone,
-          hours,
-          street
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.dist - b.dist);
-
-    state.places = parsed;
-    dom.sourceBadge.textContent = `REAL (${parsed.length})`;
+    if (myToken !== state.scanToken) return;
+    state.places = results;
+    dom.sourceBadge.textContent = sourceLabel;
     renderPlaces();
   } catch (err) {
+    if (myToken !== state.scanToken) return;
     state.places = [];
     placesLayer.clearLayers();
     dom.countDisplay.textContent = "0";
@@ -259,12 +342,14 @@ async function scanArea() {
     dom.sourceBadge.classList.add("error");
     dom.resultsList.innerHTML = `
       <div class="empty-state">
-        ⚠️ El servidor público de OpenStreetMap tardó demasiado en responder.<br/><br/>
-        Toca <strong>⚡ ESCANEAR LOCALES REALES</strong> de nuevo para reintentar.
+        ⚠️ No se pudo conectar con los servidores de mapas (${escapeHtml(err.message)}).<br/><br/>
+        Verifica tu internet y toca <strong>⚡ ESCANEAR LOCALES REALES</strong>.
       </div>
     `;
   } finally {
-    setScanningUI(false);
+    if (myToken === state.scanToken) {
+      setScanningUI(false);
+    }
   }
 }
 
@@ -283,8 +368,8 @@ function renderPlaces() {
     const rText = state.radius >= 1000 ? `${state.radius / 1000} km` : `${state.radius} m`;
     dom.resultsList.innerHTML = `
       <div class="empty-state">
-        No hay comercios con nombre registrados en OpenStreetMap dentro de <strong>${rText}</strong> aquí.<br/><br/>
-        Prueba ampliar el radio a <strong>2 km</strong> o <strong>5 km</strong> (o toca <strong>VE</strong> para ver Valencia centro).
+        No hay comercios registrados en OpenStreetMap dentro de <strong>${rText}</strong> aquí.<br/><br/>
+        Prueba ampliar a <strong>5 km</strong> o toca <strong>VE</strong> para probar el centro de Valencia.
       </div>
     `;
     return;
