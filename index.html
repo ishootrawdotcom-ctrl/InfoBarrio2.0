@@ -2,74 +2,83 @@
 <html lang="es" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#050811" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>InfoBarrio // Radar Urbano en Tiempo Real</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Google Fonts: Space Grotesk + JetBrains Mono -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <!-- Mapa Pantalla Completa -->
   <div id="map"></div>
-
-  <!-- Efecto visual de grilla tecnológica sutil -->
   <div class="hud-scanlines" aria-hidden="true"></div>
 
-  <!-- Barra Superior HUD -->
-  <header class="hud-topbar glass-panel">
+  <!-- Cabecera Flotante Minimalista -->
+  <header class="mobile-topbar glass-panel">
     <div class="brand">
       <div class="pulse-dot"></div>
-      <div>
-        <h1>INFOBARRIO <span class="badge-beta">OS v1.0</span></h1>
-        <p id="status-text" class="mono-text">INICIALIZANDO TELEMETRÍA GPS...</p>
+      <div class="brand-text">
+        <div class="brand-title-row">
+          <h1>INFOBARRIO</h1>
+          <span class="badge-beta">LIVE</span>
+        </div>
+        <p id="status-text" class="mono-text">CONECTANDO GPS...</p>
       </div>
     </div>
-
-    <div class="top-controls">
-      <button id="btn-valencia" class="hud-btn" title="Simular ubicación en Valencia, VE">
-        <span>📍 Valencia, VE</span>
-      </button>
-      <button id="btn-gps" class="hud-btn primary" title="Centrar en mi GPS real">
-        <span>🎯 Mi GPS</span>
-      </button>
-      <button id="btn-theme" class="hud-btn icon-only" title="Cambiar Modo Día / Noche" aria-label="Cambiar tema">
-        <span id="theme-icon">☀️</span>
-      </button>
-    </div>
+    <span id="scan-source-badge" class="source-tag mono-text">LISTO</span>
   </header>
 
-  <!-- Panel Lateral de Control y Detecciones -->
-  <aside id="hud-panel" class="hud-sidebar glass-panel">
-    <div class="panel-header">
-      <div>
-        <span class="section-label mono-text">RADAR DE PROXIMIDAD</span>
-        <h2>Escáner Gastronómico</h2>
+  <!-- Botones Flotantes para el Pulgar (Derecha) -->
+  <div class="map-fab-stack">
+    <button id="btn-theme" class="fab-btn glass-panel" title="Modo Día / Noche" aria-label="Cambiar tema">
+      <span id="theme-icon">☀️</span>
+    </button>
+    <button id="btn-gps" class="fab-btn primary glass-panel" title="Mi ubicación GPS real" aria-label="Mi GPS">
+      <span>🎯</span>
+    </button>
+    <button id="btn-valencia" class="fab-btn glass-panel" title="Probar en Valencia, VE" aria-label="Valencia">
+      <span class="fab-label">VE</span>
+    </button>
+  </div>
+
+  <!-- Hoja Inferior Deslizable (Bottom Sheet Estilo Nativo) -->
+  <section id="bottom-sheet" class="bottom-sheet glass-panel state-half">
+    <!-- Zona táctil para arrastrar arriba/abajo -->
+    <div id="sheet-drag-zone" class="sheet-drag-zone">
+      <div class="drag-pill" aria-hidden="true"></div>
+      <div class="sheet-header-row">
+        <div class="sheet-title-wrap" id="sheet-tap-toggle">
+          <span class="section-label mono-text">RADAR • <span id="active-radius-label">1 km</span></span>
+          <h2><span id="count-display">0</span> Lugares Cerca</h2>
+        </div>
+        <button id="btn-scan-mini" class="mini-scan-btn" aria-label="Escanear ahora">
+          <span class="scan-spinner"></span>
+          <span class="mini-scan-label">⚡ Escanear</span>
+        </button>
       </div>
-      <button id="btn-toggle-panel" class="hud-btn small" title="Minimizar/Expandir">▾</button>
     </div>
 
-    <div class="panel-body" id="panel-body">
-      <!-- Telemetría de Coordenadas -->
-      <div class="telemetry-grid mono-text">
-        <div class="stat-box">
-          <span class="stat-label">LAT / LNG</span>
-          <span id="coords-display" class="stat-value">---, ---</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-label">NODOS DETECTADOS</span>
-          <span id="count-display" class="stat-value accent">0</span>
-        </div>
+    <!-- Contenido Scrolleable -->
+    <div class="sheet-scroll" id="sheet-scroll">
+      <!-- Telemetría compacta -->
+      <div class="telemetry-strip mono-text">
+        <span>📡 <strong id="coords-display">---, ---</strong></span>
+        <span id="gps-accuracy-pill" class="acc-pill">RADAR ACTIVO</span>
       </div>
 
-      <!-- Selector de Radio -->
-      <div class="control-group">
-        <label class="mono-text">RADIO DE ESCANEO</label>
+      <!-- Radio de Escaneo -->
+      <div class="control-block">
+        <span class="control-label mono-text">RADIO DEL RADAR</span>
         <div class="radius-pills">
           <button class="pill" data-radius="500">500 m</button>
           <button class="pill active" data-radius="1000">1 km</button>
@@ -77,37 +86,32 @@
         </div>
       </div>
 
-      <!-- Filtros -->
-      <div class="control-group">
-        <label class="mono-text">FILTRO DE DETECCIÓN</label>
-        <select id="category-filter" class="hud-select">
-          <option value="all">Todos (Restaurantes, Cafés, Callejera)</option>
-          <option value="restaurant">Solo Restaurantes</option>
-          <option value="fast_food">Comida Rápida / Callejera</option>
-          <option value="cafe">Cafés y Dulces</option>
-          <option value="promos">🔥 Con Promoción Detectada (Demo)</option>
-        </select>
+      <!-- Filtros en Burbujas Horizontales -->
+      <div class="control-block">
+        <span class="control-label mono-text">CATEGORÍA</span>
+        <div class="filter-chips" id="filter-chips">
+          <button class="chip active" data-filter="all">Todos</button>
+          <button class="chip promo-chip" data-filter="promos">🔥 Promos (Demo)</button>
+          <button class="chip" data-filter="fast_food">🍔 Callejera / Rápida</button>
+          <button class="chip" data-filter="restaurant">🍽️ Restaurantes</button>
+          <button class="chip" data-filter="cafe">☕ Cafés</button>
+        </div>
       </div>
 
-      <!-- Botón Principal de Escaneo -->
+      <!-- Botón Principal -->
       <button id="btn-scan" class="scan-action-btn">
-        <span class="scan-spinner" id="scan-spinner"></span>
+        <span class="scan-spinner"></span>
         <span id="scan-btn-text">⚡ ESCANEAR ZONA EN VIVO</span>
       </button>
 
-      <!-- Lista de Resultados -->
-      <div class="results-header mono-text">
-        <span>FEED EN TIEMPO REAL</span>
-        <span id="scan-source-badge" class="source-tag">OSM LIVE</span>
-      </div>
-
+      <!-- Feed de Locales -->
       <div id="results-list" class="results-list">
         <div class="empty-state">
-          Pulsa <strong>ESCANEAR ZONA EN VIVO</strong> para detectar locales y ofertas en tu radio actual.
+          Pulsa <strong>ESCANEAR ZONA EN VIVO</strong> para detectar locales y promociones alrededor.
         </div>
       </div>
     </div>
-  </aside>
+  </section>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
