@@ -1,1 +1,116 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>InfoBarrio // Radar Urbano en Tiempo Real</title>
 
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Google Fonts: Space Grotesk + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Mapa Pantalla Completa -->
+  <div id="map"></div>
+
+  <!-- Efecto visual de grilla tecnológica sutil -->
+  <div class="hud-scanlines" aria-hidden="true"></div>
+
+  <!-- Barra Superior HUD -->
+  <header class="hud-topbar glass-panel">
+    <div class="brand">
+      <div class="pulse-dot"></div>
+      <div>
+        <h1>INFOBARRIO <span class="badge-beta">OS v1.0</span></h1>
+        <p id="status-text" class="mono-text">INICIALIZANDO TELEMETRÍA GPS...</p>
+      </div>
+    </div>
+
+    <div class="top-controls">
+      <button id="btn-valencia" class="hud-btn" title="Simular ubicación en Valencia, VE">
+        <span>📍 Valencia, VE</span>
+      </button>
+      <button id="btn-gps" class="hud-btn primary" title="Centrar en mi GPS real">
+        <span>🎯 Mi GPS</span>
+      </button>
+      <button id="btn-theme" class="hud-btn icon-only" title="Cambiar Modo Día / Noche" aria-label="Cambiar tema">
+        <span id="theme-icon">☀️</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Panel Lateral de Control y Detecciones -->
+  <aside id="hud-panel" class="hud-sidebar glass-panel">
+    <div class="panel-header">
+      <div>
+        <span class="section-label mono-text">RADAR DE PROXIMIDAD</span>
+        <h2>Escáner Gastronómico</h2>
+      </div>
+      <button id="btn-toggle-panel" class="hud-btn small" title="Minimizar/Expandir">▾</button>
+    </div>
+
+    <div class="panel-body" id="panel-body">
+      <!-- Telemetría de Coordenadas -->
+      <div class="telemetry-grid mono-text">
+        <div class="stat-box">
+          <span class="stat-label">LAT / LNG</span>
+          <span id="coords-display" class="stat-value">---, ---</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">NODOS DETECTADOS</span>
+          <span id="count-display" class="stat-value accent">0</span>
+        </div>
+      </div>
+
+      <!-- Selector de Radio -->
+      <div class="control-group">
+        <label class="mono-text">RADIO DE ESCANEO</label>
+        <div class="radius-pills">
+          <button class="pill" data-radius="500">500 m</button>
+          <button class="pill active" data-radius="1000">1 km</button>
+          <button class="pill" data-radius="2000">2 km</button>
+        </div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="control-group">
+        <label class="mono-text">FILTRO DE DETECCIÓN</label>
+        <select id="category-filter" class="hud-select">
+          <option value="all">Todos (Restaurantes, Cafés, Callejera)</option>
+          <option value="restaurant">Solo Restaurantes</option>
+          <option value="fast_food">Comida Rápida / Callejera</option>
+          <option value="cafe">Cafés y Dulces</option>
+          <option value="promos">🔥 Con Promoción Detectada (Demo)</option>
+        </select>
+      </div>
+
+      <!-- Botón Principal de Escaneo -->
+      <button id="btn-scan" class="scan-action-btn">
+        <span class="scan-spinner" id="scan-spinner"></span>
+        <span id="scan-btn-text">⚡ ESCANEAR ZONA EN VIVO</span>
+      </button>
+
+      <!-- Lista de Resultados -->
+      <div class="results-header mono-text">
+        <span>FEED EN TIEMPO REAL</span>
+        <span id="scan-source-badge" class="source-tag">OSM LIVE</span>
+      </div>
+
+      <div id="results-list" class="results-list">
+        <div class="empty-state">
+          Pulsa <strong>ESCANEAR ZONA EN VIVO</strong> para detectar locales y ofertas en tu radio actual.
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
