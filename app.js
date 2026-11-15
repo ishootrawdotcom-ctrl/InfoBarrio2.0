@@ -1,5 +1,5 @@
 // =====================================================
-// InfoBarrio OS v2.1 - Mobile-First + OpenStreetMap Real
+// InfoBarrio OS v2.2 - GPS Preciso + OpenStreetMap Real
 // =====================================================
 
 const VALENCIA_COORDS = { lat: 10.2146, lng: -68.0076 };
@@ -12,7 +12,8 @@ const state = {
   filter: "all",
   places: [],
   watchId: null,
-  usingRealGps: false,
+  hasCenteredOnce: false,
+  bestAccuracy: Infinity,
   sheetState: "half"
 };
 
@@ -61,6 +62,7 @@ const dom = {
   themeBtn: document.getElementById("btn-theme"),
   themeIcon: document.getElementById("theme-icon"),
   radiusLabel: document.getElementById("active-radius-label"),
+  accPill: document.getElementById("gps-accuracy-pill"),
   sheet: document.getElementById("bottom-sheet"),
   dragZone: document.getElementById("sheet-drag-zone"),
   tapToggle: document.getElementById("sheet-tap-toggle")
@@ -84,23 +86,29 @@ function getDistanceMeters(lat1, lon1, lat2, lon2) {
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-function updateUserPosition(lat, lng, label) {
+function updateUserPosition(lat, lng, label, accLabel = "RADAR ACTIVO") {
   state.userLat = lat;
   state.userLng = lng;
   userMarker.setLatLng([lat, lng]);
   radarCircle.setLatLng([lat, lng]);
   radarCircle.setRadius(state.radius);
-  dom.coordsDisplay.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  dom.coordsDisplay.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   dom.statusText.textContent = label;
+  if (dom.accPill) dom.accPill.textContent = accLabel;
 }
 
-function startLiveGPS() {
+function startLiveGPS(forceRecenter = false) {
   if (!("geolocation" in navigator)) {
-    updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "MODO DEMO // VALENCIA, VE");
+    updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "MODO DEMO // VALENCIA, VE", "SIN GPS");
     return;
   }
 
-  dom.statusText.textContent = "BUSCANDO SEÑAL GPS...";
+  if (forceRecenter) {
+    state.hasCenteredOnce = false;
+    state.bestAccuracy = Infinity;
+  }
+
+  dom.statusText.textContent = "CALIBRANDO GPS EXACTO...";
 
   if (state.watchId !== null) {
     navigator.geolocation.clearWatch(state.watchId);
@@ -109,21 +117,28 @@ function startLiveGPS() {
   state.watchId = navigator.geolocation.watchPosition(
     (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
-      const firstFix = !state.usingRealGps;
-      state.usingRealGps = true;
+      const acc = Math.round(accuracy);
+      const isExact = acc <= 40;
+      const statusMsg = isExact ? `GPS EXACTO (±${acc}m)` : `SEÑAL APROX (±${acc}m)`;
+      const accBadge = isExact ? `PRECISIÓN: ±${acc}m` : `WIFI/RED: ±${acc}m`;
 
-      updateUserPosition(latitude, longitude, `GPS EN VIVO (±${Math.round(accuracy)}m)`);
-      if (firstFix) {
-        map.flyTo([latitude, longitude], 15, { duration: 1.1 });
+      const improvedSignificantly = acc < state.bestAccuracy * 0.5 && acc <= 80;
+      if (acc < state.bestAccuracy) state.bestAccuracy = acc;
+
+      updateUserPosition(latitude, longitude, statusMsg, accBadge);
+
+      if (!state.hasCenteredOnce || improvedSignificantly) {
+        state.hasCenteredOnce = true;
+        map.flyTo([latitude, longitude], isExact ? 16 : 15, { duration: 1.0 });
         scanArea();
       }
     },
-    () => {
-      state.usingRealGps = false;
-      updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "VALENCIA, VE (ACTIVA TU GPS)");
+    (err) => {
+      console.warn("Error GPS:", err);
+      updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "ACTIVA UBICACIÓN PRECISA", "GPS BLOQUEADO");
       map.setView([VALENCIA_COORDS.lat, VALENCIA_COORDS.lng], 15);
     },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
   );
 }
 
@@ -163,9 +178,7 @@ async function fetchOverpass(query) {
       const res = await fetch(url, { method: "POST", body: query, signal: controller.signal });
       clearTimeout(timeoutId);
       if (res.ok) return await res.json();
-    } catch (_) {
-      // Intenta el siguiente servidor
-    }
+    } catch (_) {}
   }
   throw new Error("Sin respuesta de servidores OSM");
 }
@@ -378,13 +391,13 @@ dom.miniScanBtn.addEventListener("click", scanArea);
 
 document.getElementById("btn-valencia").addEventListener("click", () => {
   if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId);
-  state.usingRealGps = false;
-  updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "VALENCIA, VE (DEMO)");
+  state.hasCenteredOnce = true;
+  updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "VALENCIA, VE (DEMO)", "MODO PRUEBA");
   map.flyTo([VALENCIA_COORDS.lat, VALENCIA_COORDS.lng], 15, { duration: 1 });
   scanArea();
 });
 
-document.getElementById("btn-gps").addEventListener("click", startLiveGPS);
+document.getElementById("btn-gps").addEventListener("click", () => startLiveGPS(true));
 
 dom.themeBtn.addEventListener("click", () => {
   const isDark = state.theme === "dark";
@@ -401,4 +414,4 @@ dom.themeBtn.addEventListener("click", () => {
 });
 
 // Arrancar
-startLiveGPS();
+startLiveGPS(true);
