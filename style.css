@@ -7,7 +7,7 @@
   --text-muted: #8da2c0;
   --accent: #00f0ff;
   --accent-secondary: #10b981;
-  --promo-color: #ff3b7f;
+  --social-color: #f472b6;
   --shadow-glow: 0 10px 35px rgba(0, 0, 0, 0.6), 0 0 18px rgba(0, 240, 255, 0.08);
   --scanline-opacity: 0.035;
   --map-bg: #0b1120;
@@ -22,7 +22,7 @@
   --text-muted: #475569;
   --accent: #0284c7;
   --accent-secondary: #059669;
-  --promo-color: #e11d48;
+  --social-color: #db2777;
   --shadow-glow: 0 10px 30px rgba(15, 23, 42, 0.14);
   --scanline-opacity: 0.012;
   --map-bg: #e2e8f0;
@@ -58,7 +58,6 @@ html, body {
   background: var(--map-bg);
 }
 
-/* Convierte OpenStreetMap en Mapa Nocturno Futurista al instante */
 :root[data-theme="dark"] .leaflet-tile-pane {
   filter: invert(100%) hue-rotate(180deg) brightness(90%) contrast(94%) saturate(70%);
 }
@@ -84,7 +83,6 @@ html, body {
   box-shadow: var(--shadow-glow);
 }
 
-/* Cabecera Flotante Superior */
 .mobile-topbar {
   position: fixed;
   top: calc(10px + env(safe-area-inset-top));
@@ -123,7 +121,7 @@ html, body {
 }
 
 .badge-beta {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 999px;
@@ -152,6 +150,12 @@ html, body {
   flex-shrink: 0;
 }
 
+.source-tag.error {
+  background: rgba(244, 63, 94, 0.18);
+  color: #fb7185;
+  border-color: rgba(244, 63, 94, 0.35);
+}
+
 .pulse-dot {
   width: 11px;
   height: 11px;
@@ -167,7 +171,6 @@ html, body {
   50% { transform: scale(1.25); opacity: 1; }
 }
 
-/* Botones Flotantes Derecha (Para el Pulgar) */
 .map-fab-stack {
   position: fixed;
   top: calc(74px + env(safe-area-inset-top));
@@ -189,7 +192,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s ease, border-color 0.2s ease;
+  transition: transform 0.15s ease;
 }
 
 .fab-btn:active {
@@ -207,7 +210,6 @@ html, body {
   color: var(--accent);
 }
 
-/* Hoja Inferior Deslizable (Bottom Sheet) */
 .bottom-sheet {
   position: fixed;
   left: 0;
@@ -295,10 +297,6 @@ html, body {
   flex-shrink: 0;
 }
 
-.mini-scan-btn:active {
-  transform: scale(0.95);
-}
-
 .sheet-scroll {
   flex: 1;
   overflow-y: auto;
@@ -344,18 +342,18 @@ html, body {
 
 .radius-pills {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
 }
 
 .pill {
   background: var(--bg-card);
   border: 1px solid var(--border-glass);
   color: var(--text-muted);
-  min-height: 42px;
-  border-radius: 11px;
+  min-height: 40px;
+  border-radius: 10px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -366,7 +364,6 @@ html, body {
   border-color: var(--accent);
 }
 
-/* Burbujas Horizontales Deslizables */
 .filter-chips {
   display: flex;
   gap: 8px;
@@ -399,10 +396,10 @@ html, body {
   color: var(--accent);
 }
 
-.chip.promo-chip.active {
-  background: rgba(255, 59, 127, 0.18);
-  border-color: var(--promo-color);
-  color: var(--promo-color);
+.chip.social-chip.active {
+  background: rgba(244, 114, 182, 0.18);
+  border-color: var(--social-color);
+  color: var(--social-color);
 }
 
 .scan-action-btn {
@@ -422,10 +419,6 @@ html, body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-}
-
-.scan-action-btn:active {
-  transform: scale(0.98);
 }
 
 .scan-action-btn:disabled,
@@ -464,11 +457,9 @@ html, body {
   border-radius: 14px;
   padding: 13px 14px;
   cursor: pointer;
-  transition: transform 0.12s ease, border-color 0.2s ease;
 }
 
 .place-card:active {
-  transform: scale(0.98);
   background: var(--bg-card-active);
 }
 
@@ -497,37 +488,39 @@ html, body {
   margin-top: 4px;
 }
 
-.promo-pill {
-  margin-top: 9px;
-  padding: 7px 10px;
-  border-radius: 9px;
-  background: rgba(255, 59, 127, 0.14);
-  border: 1px solid rgba(255, 59, 127, 0.35);
-  color: var(--promo-color);
-  font-size: 0.78rem;
-  font-weight: 600;
+.place-tags {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+  margin-top: 8px;
 }
 
-.ig-link {
-  margin-top: 6px;
-  font-size: 0.76rem;
+.tag-badge {
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgba(0, 240, 255, 0.1);
+  border: 1px solid rgba(0, 240, 255, 0.25);
   color: var(--accent);
+  text-decoration: none;
+}
+
+.tag-badge.social {
+  background: rgba(244, 114, 182, 0.12);
+  border-color: rgba(244, 114, 182, 0.35);
+  color: var(--social-color);
 }
 
 .empty-state {
   text-align: center;
   font-size: 0.84rem;
   color: var(--text-muted);
-  padding: 22px 12px;
+  padding: 20px 14px;
   border: 1px dashed var(--border-glass);
   border-radius: 12px;
+  line-height: 1.45;
 }
 
-/* Beacon GPS del Usuario */
 .user-beacon {
   width: 20px;
   height: 20px;
