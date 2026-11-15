@@ -1,5 +1,5 @@
 // =====================================================
-// InfoBarrio OS v2.0 - Mobile-First Touch HUD
+// InfoBarrio OS v2.1 - Mobile-First + OpenStreetMap Real
 // =====================================================
 
 const VALENCIA_COORDS = { lat: 10.2146, lng: -68.0076 };
@@ -13,25 +13,20 @@ const state = {
   places: [],
   watchId: null,
   usingRealGps: false,
-  sheetState: "half" // "peek" | "half" | "full"
+  sheetState: "half"
 };
 
-const TILE_LAYERS = {
-  dark: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution: "&copy; OpenStreetMap &copy; CARTO",
-    maxZoom: 20
-  }),
-  light: L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    attribution: "&copy; OpenStreetMap &copy; CARTO",
-    maxZoom: 20
-  })
-};
+// Mapa OpenStreetMap 100% Gratuito (Sin API Key)
+const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "&copy; OpenStreetMap contributors",
+  maxZoom: 19
+});
 
 const map = L.map("map", {
   center: [state.userLat, state.userLng],
   zoom: 15,
   zoomControl: false,
-  layers: [TILE_LAYERS.dark]
+  layers: [osmLayer]
 });
 
 L.control.zoom({ position: "bottomright" }).addTo(map);
@@ -156,11 +151,30 @@ function setScanningUI(isLoading) {
   dom.scanBtnText.textContent = isLoading ? "ESCANEANDO RADAR..." : "⚡ ESCANEAR ZONA EN VIVO";
 }
 
+async function fetchOverpass(query) {
+  const endpoints = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter"
+  ];
+  for (const url of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 9000);
+      const res = await fetch(url, { method: "POST", body: query, signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) return await res.json();
+    } catch (_) {
+      // Intenta el siguiente servidor
+    }
+  }
+  throw new Error("Sin respuesta de servidores OSM");
+}
+
 async function scanArea() {
   setScanningUI(true);
 
   const query = `
-    [out:json][timeout:15];
+    [out:json][timeout:12];
     (
       node["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar"](around:${state.radius},${state.userLat},${state.userLng});
       way["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar"](around:${state.radius},${state.userLat},${state.userLng});
@@ -169,19 +183,7 @@ async function scanArea() {
   `;
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 14000);
-
-    const res = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      body: query,
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-
-    if (!res.ok) throw new Error("Overpass saturado");
-    const data = await res.json();
-
+    const data = await fetchOverpass(query);
     const parsed = data.elements
       .map((el, idx) => {
         const lat = el.lat ?? el.center?.lat;
@@ -247,7 +249,7 @@ function renderPlaces() {
   dom.countDisplay.textContent = filtered.length;
 
   if (filtered.length === 0) {
-    dom.resultsList.innerHTML = `<div class="empty-state">No hay locales con este filtro dentro de ${state.radius >= 1000 ? state.radius / 1000 + " km" : state.radius + " m"}.</div>`;
+    dom.resultsList.innerHTML = `<div class="empty-state">No hay locales registrados en este radio (${state.radius >= 1000 ? state.radius / 1000 + " km" : state.radius + " m"}). Prueba ampliar a <strong>2 km</strong> o pulsa <strong>VE</strong>.</div>`;
     return;
   }
 
@@ -292,7 +294,6 @@ function renderPlaces() {
     `;
 
     card.addEventListener("click", () => {
-      // En móvil, baja el panel para ver bien el pin en el mapa
       if (window.innerWidth < 900) {
         setSheetState("peek");
       }
@@ -304,9 +305,7 @@ function renderPlaces() {
   });
 }
 
-// =====================================================
-// Gestos Táctiles del Bottom Sheet (iOS / Android)
-// =====================================================
+// Gestos Táctiles del Bottom Sheet
 function setSheetState(nextState) {
   state.sheetState = nextState;
   dom.sheet.classList.remove("state-peek", "state-half", "state-full");
@@ -347,16 +346,13 @@ window.addEventListener("touchend", () => {
   else setSheetState("full");
 });
 
-// Tocar el título alterna el tamaño del panel
 dom.tapToggle.addEventListener("click", () => {
   if (window.innerWidth >= 900) return;
   const order = { peek: "half", half: "full", full: "peek" };
   setSheetState(order[state.sheetState]);
 });
 
-// =====================================================
-// Controles Generales
-// =====================================================
+// Controles
 document.querySelectorAll(".pill").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".pill").forEach((b) => b.classList.remove("active"));
@@ -398,12 +394,8 @@ dom.themeBtn.addEventListener("click", () => {
   document.querySelector('meta[name="theme-color"]').setAttribute("content", isDark ? "#f8fafc" : "#050811");
 
   if (isDark) {
-    map.removeLayer(TILE_LAYERS.dark);
-    TILE_LAYERS.light.addTo(map);
     radarCircle.setStyle({ color: "#0284c7", fillColor: "#0284c7" });
   } else {
-    map.removeLayer(TILE_LAYERS.light);
-    TILE_LAYERS.dark.addTo(map);
     radarCircle.setStyle({ color: "#00f0ff", fillColor: "#00f0ff" });
   }
 });
