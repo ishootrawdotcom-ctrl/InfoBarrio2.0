@@ -1,5 +1,5 @@
 // =====================================================
-// InfoBarrio OS v2.2 - GPS Preciso + OpenStreetMap Real
+// InfoBarrio OS v2.3 - 100% Datos Reales OpenStreetMap
 // =====================================================
 
 const VALENCIA_COORDS = { lat: 10.2146, lng: -68.0076 };
@@ -17,7 +17,6 @@ const state = {
   sheetState: "half"
 };
 
-// Mapa OpenStreetMap 100% Gratuito (Sin API Key)
 const osmLayer = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap contributors",
   maxZoom: 19
@@ -99,7 +98,7 @@ function updateUserPosition(lat, lng, label, accLabel = "RADAR ACTIVO") {
 
 function startLiveGPS(forceRecenter = false) {
   if (!("geolocation" in navigator)) {
-    updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "MODO DEMO // VALENCIA, VE", "SIN GPS");
+    updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "MODO VALENCIA", "SIN GPS");
     return;
   }
 
@@ -133,8 +132,7 @@ function startLiveGPS(forceRecenter = false) {
         scanArea();
       }
     },
-    (err) => {
-      console.warn("Error GPS:", err);
+    () => {
       updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "ACTIVA UBICACIÓN PRECISA", "GPS BLOQUEADO");
       map.setView([VALENCIA_COORDS.lat, VALENCIA_COORDS.lng], 15);
     },
@@ -142,20 +140,29 @@ function startLiveGPS(forceRecenter = false) {
   );
 }
 
-const DEMO_PROMOS = [
-  "2x1 en Hamburguesas HOY",
-  "20% OFF pagando en efectivo / divisas",
-  "Happy Hour 5PM - 8PM",
-  "Combo Callejero Especial Fin de Semana",
-  "Bebida gratis con tu almuerzo hoy"
-];
+const CATEGORY_LABELS = {
+  restaurant: "Restaurante",
+  fast_food: "Comida Rápida / Callejera",
+  cafe: "Café",
+  food_court: "Feria de Comida",
+  ice_cream: "Heladería",
+  bar: "Bar / Tasca",
+  pub: "Pub",
+  bakery: "Panadería",
+  pastry: "Pastelería",
+  convenience: "Abasto / Mini Market",
+  supermarket: "Supermercado",
+  beverages: "Licorería / Bebidas",
+  butcher: "Carnicería",
+  deli: "Charcutería / Bodegón"
+};
 
-function detectSocialAndPromos(tags, index) {
-  const igTag = tags["contact:instagram"] || tags["instagram"] || null;
-  const webTag = tags["website"] || tags["contact:website"] || null;
-  const hasPromo = index % 3 === 0;
-  const promoText = hasPromo ? DEMO_PROMOS[index % DEMO_PROMOS.length] : null;
-  return { igTag, webTag, promoText };
+function formatInstagramUrl(raw) {
+  if (!raw) return null;
+  const clean = raw.trim();
+  if (clean.startsWith("http")) return clean;
+  const user = clean.replace(/^@/, "").replace(/\/$/, "");
+  return `https://instagram.com/${user}`;
 }
 
 function setScanningUI(isLoading) {
@@ -163,91 +170,102 @@ function setScanningUI(isLoading) {
   dom.miniScanBtn.disabled = isLoading;
   dom.scanBtn.classList.toggle("loading", isLoading);
   dom.miniScanBtn.classList.toggle("loading", isLoading);
-  dom.scanBtnText.textContent = isLoading ? "ESCANEANDO RADAR..." : "⚡ ESCANEAR ZONA EN VIVO";
+  dom.scanBtnText.textContent = isLoading ? "BUSCANDO LOCALES REALES..." : "⚡ ESCANEAR LOCALES REALES";
 }
 
 async function fetchOverpass(query) {
   const endpoints = [
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter"
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://z.overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter"
   ];
-  for (const url of endpoints) {
+  const encoded = encodeURIComponent(query.replace(/\s+/g, " ").trim());
+
+  for (const base of endpoints) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 9000);
-      const res = await fetch(url, { method: "POST", body: query, signal: controller.signal });
+      const timeoutId = setTimeout(() => controller.abort(), 14000);
+      const res = await fetch(`${base}?data=${encoded}`, { signal: controller.signal });
       clearTimeout(timeoutId);
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.elements)) return json;
+      }
     } catch (_) {}
   }
-  throw new Error("Sin respuesta de servidores OSM");
+  throw new Error("Servidores de OpenStreetMap ocupados");
 }
 
 async function scanArea() {
   setScanningUI(true);
+  dom.sourceBadge.classList.remove("error");
+  dom.sourceBadge.textContent = "BUSCANDO...";
 
-  const query = `
-    [out:json][timeout:12];
-    (
-      node["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar"](around:${state.radius},${state.userLat},${state.userLng});
-      way["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar"](around:${state.radius},${state.userLat},${state.userLng});
-    );
-    out center 60;
-  `;
+  const query = `[out:json][timeout:15];(node["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar|pub"](around:${state.radius},${state.userLat},${state.userLng});way["amenity"~"restaurant|fast_food|cafe|food_court|ice_cream|bar|pub"](around:${state.radius},${state.userLat},${state.userLng});node["shop"~"bakery|pastry|convenience|supermarket|beverages|butcher|deli"](around:${state.radius},${state.userLat},${state.userLng});way["shop"~"bakery|pastry|convenience|supermarket|beverages|butcher|deli"](around:${state.radius},${state.userLat},${state.userLng}););out center 100;`;
 
   try {
     const data = await fetchOverpass(query);
     const parsed = data.elements
-      .map((el, idx) => {
+      .map((el) => {
         const lat = el.lat ?? el.center?.lat;
         const lng = el.lon ?? el.center?.lon;
         if (!lat || !lng) return null;
 
         const tags = el.tags || {};
-        const name = tags.name || `Local #${el.id.toString().slice(-4)}`;
-        const amenity = tags.amenity || "restaurant";
-        const cuisine = tags.cuisine ? tags.cuisine.replace(/;/g, ", ") : amenity;
-        const dist = getDistanceMeters(state.userLat, state.userLng, lat, lng);
-        const social = detectSocialAndPromos(tags, idx);
+        // Ignorar puntos sin nombre real registrado
+        if (!tags.name) return null;
 
-        return { id: el.id, name, amenity, cuisine, lat, lng, dist, ...social };
+        const rawType = tags.amenity || tags.shop || "restaurant";
+        const group = tags.shop ? "shop" : rawType;
+        const typeLabel = CATEGORY_LABELS[rawType] || rawType;
+        const cuisine = tags.cuisine ? tags.cuisine.replace(/;/g, ", ") : typeLabel;
+
+        const igRaw = tags["contact:instagram"] || tags["instagram"] || null;
+        const igUrl = formatInstagramUrl(igRaw);
+        const webRaw = tags["website"] || tags["contact:website"] || null;
+        const phone = tags["phone"] || tags["contact:phone"] || tags["contact:whatsapp"] || null;
+        const hours = tags["opening_hours"] || null;
+        const street = tags["addr:street"] || null;
+
+        return {
+          id: el.id,
+          name: tags.name,
+          group,
+          typeLabel,
+          cuisine,
+          lat,
+          lng,
+          dist: getDistanceMeters(state.userLat, state.userLng, lat, lng),
+          igRaw,
+          igUrl,
+          webRaw,
+          phone,
+          hours,
+          street
+        };
       })
       .filter(Boolean)
       .sort((a, b) => a.dist - b.dist);
 
     state.places = parsed;
-    dom.sourceBadge.textContent = `OSM (${parsed.length})`;
+    dom.sourceBadge.textContent = `REAL (${parsed.length})`;
+    renderPlaces();
   } catch (err) {
-    state.places = generateFallbackPlaces();
-    dom.sourceBadge.textContent = "DEMO OFFLINE";
+    state.places = [];
+    placesLayer.clearLayers();
+    dom.countDisplay.textContent = "0";
+    dom.sourceBadge.textContent = "SIN RED";
+    dom.sourceBadge.classList.add("error");
+    dom.resultsList.innerHTML = `
+      <div class="empty-state">
+        ⚠️ El servidor público de OpenStreetMap tardó demasiado en responder.<br/><br/>
+        Toca <strong>⚡ ESCANEAR LOCALES REALES</strong> de nuevo para reintentar.
+      </div>
+    `;
   } finally {
     setScanningUI(false);
-    renderPlaces();
   }
-}
-
-function generateFallbackPlaces() {
-  const samples = [
-    { name: "Pepitos El Viñedo (Demo)", amenity: "fast_food", cuisine: "comida callejera", dLat: 0.0021, dLng: 0.0018 },
-    { name: "Arepera La Ceiba (Demo)", amenity: "restaurant", cuisine: "venezolana", dLat: -0.0018, dLng: 0.0025 },
-    { name: "Café Bolívar Lab (Demo)", amenity: "cafe", cuisine: "café, postres", dLat: 0.003, dLng: -0.002 }
-  ];
-  return samples.map((s, i) => {
-    const lat = state.userLat + s.dLat;
-    const lng = state.userLng + s.dLng;
-    return {
-      id: i + 1,
-      name: s.name,
-      amenity: s.amenity,
-      cuisine: s.cuisine,
-      lat,
-      lng,
-      dist: getDistanceMeters(state.userLat, state.userLng, lat, lng),
-      igTag: "@local_demo",
-      webTag: null,
-      promoText: DEMO_PROMOS[i]
-    };
-  });
 }
 
 function renderPlaces() {
@@ -255,25 +273,31 @@ function renderPlaces() {
 
   const filtered = state.places.filter((p) => {
     if (state.filter === "all") return true;
-    if (state.filter === "promos") return Boolean(p.promoText);
-    return p.amenity === state.filter;
+    if (state.filter === "social") return Boolean(p.igUrl || p.webRaw || p.phone);
+    return p.group === state.filter;
   });
 
   dom.countDisplay.textContent = filtered.length;
 
   if (filtered.length === 0) {
-    dom.resultsList.innerHTML = `<div class="empty-state">No hay locales registrados en este radio (${state.radius >= 1000 ? state.radius / 1000 + " km" : state.radius + " m"}). Prueba ampliar a <strong>2 km</strong> o pulsa <strong>VE</strong>.</div>`;
+    const rText = state.radius >= 1000 ? `${state.radius / 1000} km` : `${state.radius} m`;
+    dom.resultsList.innerHTML = `
+      <div class="empty-state">
+        No hay comercios con nombre registrados en OpenStreetMap dentro de <strong>${rText}</strong> aquí.<br/><br/>
+        Prueba ampliar el radio a <strong>2 km</strong> o <strong>5 km</strong> (o toca <strong>VE</strong> para ver Valencia centro).
+      </div>
+    `;
     return;
   }
 
   dom.resultsList.innerHTML = "";
 
   filtered.forEach((place) => {
-    const hasPromo = Boolean(place.promoText);
-    const markerColor = hasPromo ? "#ff3b7f" : "#10b981";
+    const hasSocial = Boolean(place.igUrl || place.webRaw);
+    const markerColor = hasSocial ? "#f472b6" : "#10b981";
 
     const marker = L.circleMarker([place.lat, place.lng], {
-      radius: hasPromo ? 10 : 7,
+      radius: hasSocial ? 9 : 7,
       color: "#ffffff",
       weight: 2,
       fillColor: markerColor,
@@ -281,13 +305,18 @@ function renderPlaces() {
     }).addTo(placesLayer);
 
     marker.bindPopup(`
-      <div style="font-family: 'Space Grotesk', sans-serif; min-width: 170px;">
+      <div style="font-family: 'Space Grotesk', sans-serif; min-width: 175px; max-width: 230px;">
         <strong>${escapeHtml(place.name)}</strong><br/>
-        <small style="opacity:0.8;">${escapeHtml(place.cuisine)} • ${place.dist} m</small>
-        ${hasPromo ? `<div style="margin-top:6px; color:#ff3b7f; font-weight:700;">🔥 ${escapeHtml(place.promoText)}</div>` : ""}
-        ${place.igTag ? `<div style="margin-top:4px; font-size:0.85em;">📸 ${escapeHtml(place.igTag)}</div>` : ""}
+        <small style="opacity:0.85;">${escapeHtml(place.typeLabel)} • ${place.dist} m</small>
+        ${place.street ? `<div style="margin-top:4px; font-size:0.8em;">📍 ${escapeHtml(place.street)}</div>` : ""}
+        ${place.phone ? `<div style="margin-top:4px; font-size:0.8em;">📞 ${escapeHtml(place.phone)}</div>` : ""}
+        ${place.igUrl ? `<div style="margin-top:5px;"><a href="${escapeHtml(place.igUrl)}" target="_blank" rel="noopener" style="color:#f472b6; font-weight:700;">📸 Abrir Instagram</a></div>` : ""}
+        ${place.webRaw ? `<div style="margin-top:4px;"><a href="${escapeHtml(place.webRaw)}" target="_blank" rel="noopener" style="color:#00f0ff;">🌐 Ver Sitio Web</a></div>` : ""}
       </div>
-    `);
+    `, {
+      autoPanPaddingTopLeft: L.point(16, 85),
+      autoPanPaddingBottomRight: L.point(70, 120)
+    });
 
     const card = document.createElement("div");
     card.className = "place-card";
@@ -296,14 +325,16 @@ function renderPlaces() {
         <span class="place-name">${escapeHtml(place.name)}</span>
         <span class="place-dist">${place.dist} m</span>
       </div>
-      <div class="place-meta">🍽️ ${escapeHtml(place.cuisine)}</div>
-      ${place.igTag ? `<div class="ig-link">📸 IG: ${escapeHtml(place.igTag)}</div>` : ""}
-      ${hasPromo ? `
-        <div class="promo-pill">
-          <span>🔥 ${escapeHtml(place.promoText)}</span>
-          <small class="mono-text">DEMO</small>
-        </div>` : ""
-      }
+      <div class="place-meta">
+        ${escapeHtml(place.typeLabel)}${place.cuisine !== place.typeLabel ? ` • ${escapeHtml(place.cuisine)}` : ""}
+        ${place.street ? ` • ${escapeHtml(place.street)}` : ""}
+      </div>
+      <div class="place-tags">
+        ${place.igUrl ? `<a class="tag-badge social" href="${escapeHtml(place.igUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📸 Instagram</a>` : ""}
+        ${place.webRaw ? `<a class="tag-badge" href="${escapeHtml(place.webRaw)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🌐 Web</a>` : ""}
+        ${place.phone ? `<span class="tag-badge">📞 ${escapeHtml(place.phone)}</span>` : ""}
+        ${place.hours ? `<span class="tag-badge">🕒 ${escapeHtml(place.hours)}</span>` : ""}
+      </div>
     `;
 
     card.addEventListener("click", () => {
@@ -392,7 +423,7 @@ dom.miniScanBtn.addEventListener("click", scanArea);
 document.getElementById("btn-valencia").addEventListener("click", () => {
   if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId);
   state.hasCenteredOnce = true;
-  updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "VALENCIA, VE (DEMO)", "MODO PRUEBA");
+  updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "VALENCIA, VE (PRUEBA)", "MODO PRUEBA");
   map.flyTo([VALENCIA_COORDS.lat, VALENCIA_COORDS.lng], 15, { duration: 1 });
   scanArea();
 });
