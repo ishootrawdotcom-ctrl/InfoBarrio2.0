@@ -10,6 +10,7 @@
   --promo-color: #ff3b7f;
   --shadow-glow: 0 10px 35px rgba(0, 0, 0, 0.6), 0 0 18px rgba(0, 240, 255, 0.08);
   --scanline-opacity: 0.035;
+  --map-bg: #0b1120;
 }
 
 :root[data-theme="light"] {
@@ -24,6 +25,7 @@
   --promo-color: #e11d48;
   --shadow-glow: 0 10px 30px rgba(15, 23, 42, 0.14);
   --scanline-opacity: 0.012;
+  --map-bg: #e2e8f0;
 }
 
 * {
@@ -40,7 +42,7 @@ html, body {
   overscroll-behavior: none;
   font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   color: var(--text-main);
-  background: #050811;
+  background: var(--map-bg);
 }
 
 .mono-text {
@@ -53,6 +55,12 @@ html, body {
   width: 100vw;
   height: 100dvh;
   z-index: 1;
+  background: var(--map-bg);
+}
+
+/* Convierte OpenStreetMap en Mapa Nocturno Futurista al instante */
+:root[data-theme="dark"] .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(90%) contrast(94%) saturate(70%);
 }
 
 .hud-scanlines {
@@ -551,14 +559,12 @@ html, body {
   border: 1px solid var(--border-glass);
 }
 
-/* Ocultar zoom +/- en teléfonos (se usa pellizco) */
 @media (max-width: 899px) {
   .leaflet-control-zoom {
     display: none !important;
   }
 }
 
-/* Vista Desktop (Panel Lateral Elegante) */
 @media (min-width: 900px) {
   .mobile-topbar {
     left: 18px;
