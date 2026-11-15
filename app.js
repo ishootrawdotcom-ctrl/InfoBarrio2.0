@@ -1,20 +1,21 @@
 // =====================================================
-// InfoBarrio OS v1.0 - Motor Geoespacial en Tiempo Real
+// InfoBarrio OS v2.0 - Mobile-First Touch HUD
 // =====================================================
 
-const VALENCIA_COORDS = { lat: 10.2146, lng: -68.0076 }; // Av. Bolívar Norte / El Viñedo, Valencia, VE
+const VALENCIA_COORDS = { lat: 10.2146, lng: -68.0076 };
 
 const state = {
   theme: "dark",
   userLat: VALENCIA_COORDS.lat,
   userLng: VALENCIA_COORDS.lng,
   radius: 1000,
+  filter: "all",
   places: [],
   watchId: null,
-  usingRealGps: false
+  usingRealGps: false,
+  sheetState: "half" // "peek" | "half" | "full"
 };
 
-// Capas de Mapa (Día vs Noche)
 const TILE_LAYERS = {
   dark: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     attribution: "&copy; OpenStreetMap &copy; CARTO",
@@ -26,7 +27,6 @@ const TILE_LAYERS = {
   })
 };
 
-// Inicializar Mapa
 const map = L.map("map", {
   center: [state.userLat, state.userLng],
   zoom: 15,
@@ -35,11 +35,8 @@ const map = L.map("map", {
 });
 
 L.control.zoom({ position: "bottomright" }).addTo(map);
-
-// Capa de marcadores de locales
 const placesLayer = L.layerGroup().addTo(map);
 
-// Marcador del usuario (Beacon cibernético)
 const userIcon = L.divIcon({
   className: "",
   html: `<div class="user-beacon"></div>`,
@@ -57,7 +54,6 @@ let radarCircle = L.circle([state.userLat, state.userLng], {
   dashArray: "6 6"
 }).addTo(map);
 
-// Referencias DOM
 const dom = {
   statusText: document.getElementById("status-text"),
   coordsDisplay: document.getElementById("coords-display"),
@@ -65,22 +61,22 @@ const dom = {
   resultsList: document.getElementById("results-list"),
   scanBtn: document.getElementById("btn-scan"),
   scanBtnText: document.getElementById("scan-btn-text"),
-  categoryFilter: document.getElementById("category-filter"),
+  miniScanBtn: document.getElementById("btn-scan-mini"),
   sourceBadge: document.getElementById("scan-source-badge"),
   themeBtn: document.getElementById("btn-theme"),
   themeIcon: document.getElementById("theme-icon"),
-  sidebar: document.getElementById("hud-panel"),
-  togglePanelBtn: document.getElementById("btn-toggle-panel")
+  radiusLabel: document.getElementById("active-radius-label"),
+  sheet: document.getElementById("bottom-sheet"),
+  dragZone: document.getElementById("sheet-drag-zone"),
+  tapToggle: document.getElementById("sheet-tap-toggle")
 };
 
-// Escapar HTML para evitar inyecciones de datos externos
 function escapeHtml(str = "") {
   return String(str).replace(/[&<>"']/g, (m) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[m]));
 }
 
-// Fórmula Haversine para distancia exacta en metros
 function getDistanceMeters(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -93,27 +89,23 @@ function getDistanceMeters(lat1, lon1, lat2, lon2) {
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-// Actualizar posición en mapa y telemetría
 function updateUserPosition(lat, lng, label) {
   state.userLat = lat;
   state.userLng = lng;
-
   userMarker.setLatLng([lat, lng]);
   radarCircle.setLatLng([lat, lng]);
   radarCircle.setRadius(state.radius);
-
   dom.coordsDisplay.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
   dom.statusText.textContent = label;
 }
 
-// Activar GPS en vivo
 function startLiveGPS() {
   if (!("geolocation" in navigator)) {
-    updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "GPS NO DISPONIBLE // MODO VALENCIA");
+    updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "MODO DEMO // VALENCIA, VE");
     return;
   }
 
-  dom.statusText.textContent = "BUSCANDO SEÑAL SATELITAL EN VIVO...";
+  dom.statusText.textContent = "BUSCANDO SEÑAL GPS...";
 
   if (state.watchId !== null) {
     navigator.geolocation.clearWatch(state.watchId);
@@ -127,24 +119,22 @@ function startLiveGPS() {
 
       updateUserPosition(latitude, longitude, `GPS EN VIVO (±${Math.round(accuracy)}m)`);
       if (firstFix) {
-        map.flyTo([latitude, longitude], 15, { duration: 1.2 });
+        map.flyTo([latitude, longitude], 15, { duration: 1.1 });
         scanArea();
       }
     },
-    (err) => {
-      console.warn("Error GPS:", err.message);
+    () => {
       state.usingRealGps = false;
-      updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "MODO DEMO: VALENCIA, VE (ACTIVA GPS PARA VIVO)");
+      updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "VALENCIA, VE (ACTIVA TU GPS)");
       map.setView([VALENCIA_COORDS.lat, VALENCIA_COORDS.lng], 15);
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
   );
 }
 
-// Simulador de detección de ofertas en redes (Fase 1 Demo)
 const DEMO_PROMOS = [
   "2x1 en Hamburguesas HOY",
-  "20% OFF pagando en divisas / efectivo",
+  "20% OFF pagando en efectivo / divisas",
   "Happy Hour 5PM - 8PM",
   "Combo Callejero Especial Fin de Semana",
   "Bebida gratis con tu almuerzo hoy"
@@ -153,19 +143,21 @@ const DEMO_PROMOS = [
 function detectSocialAndPromos(tags, index) {
   const igTag = tags["contact:instagram"] || tags["instagram"] || null;
   const webTag = tags["website"] || tags["contact:website"] || null;
-
-  // En fase 1 simulamos la detección IA en ~40% de los locales
   const hasPromo = index % 3 === 0;
   const promoText = hasPromo ? DEMO_PROMOS[index % DEMO_PROMOS.length] : null;
-
   return { igTag, webTag, promoText };
 }
 
-// Consultar OpenStreetMap Overpass API en tiempo real
+function setScanningUI(isLoading) {
+  dom.scanBtn.disabled = isLoading;
+  dom.miniScanBtn.disabled = isLoading;
+  dom.scanBtn.classList.toggle("loading", isLoading);
+  dom.miniScanBtn.classList.toggle("loading", isLoading);
+  dom.scanBtnText.textContent = isLoading ? "ESCANEANDO RADAR..." : "⚡ ESCANEAR ZONA EN VIVO";
+}
+
 async function scanArea() {
-  dom.scanBtn.disabled = true;
-  dom.scanBtn.classList.add("loading");
-  dom.scanBtnText.textContent = "ESCANEANDO RADAR...";
+  setScanningUI(true);
 
   const query = `
     [out:json][timeout:15];
@@ -187,7 +179,7 @@ async function scanArea() {
     });
     clearTimeout(timeoutId);
 
-    if (!res.ok) throw new Error("Overpass API saturada");
+    if (!res.ok) throw new Error("Overpass saturado");
     const data = await res.json();
 
     const parsed = data.elements
@@ -197,7 +189,7 @@ async function scanArea() {
         if (!lat || !lng) return null;
 
         const tags = el.tags || {};
-        const name = tags.name || `Local Gastronómico #${el.id.toString().slice(-4)}`;
+        const name = tags.name || `Local #${el.id.toString().slice(-4)}`;
         const amenity = tags.amenity || "restaurant";
         const cuisine = tags.cuisine ? tags.cuisine.replace(/;/g, ", ") : amenity;
         const dist = getDistanceMeters(state.userLat, state.userLng, lat, lng);
@@ -209,20 +201,16 @@ async function scanArea() {
       .sort((a, b) => a.dist - b.dist);
 
     state.places = parsed;
-    dom.sourceBadge.textContent = `OSM LIVE (${parsed.length})`;
+    dom.sourceBadge.textContent = `OSM (${parsed.length})`;
   } catch (err) {
-    console.warn("Fallback local por error de red:", err);
     state.places = generateFallbackPlaces();
-    dom.sourceBadge.textContent = "MODO OFFLINE DEMO";
+    dom.sourceBadge.textContent = "DEMO OFFLINE";
   } finally {
-    dom.scanBtn.disabled = false;
-    dom.scanBtn.classList.remove("loading");
-    dom.scanBtnText.textContent = "⚡ ESCANEAR ZONA EN VIVO";
+    setScanningUI(false);
     renderPlaces();
   }
 }
 
-// Respaldo si Overpass tarda mucho
 function generateFallbackPlaces() {
   const samples = [
     { name: "Pepitos El Viñedo (Demo)", amenity: "fast_food", cuisine: "comida callejera", dLat: 0.0021, dLng: 0.0018 },
@@ -247,21 +235,19 @@ function generateFallbackPlaces() {
   });
 }
 
-// Dibujar resultados en el mapa y en el panel
 function renderPlaces() {
   placesLayer.clearLayers();
-  const filter = dom.categoryFilter.value;
 
   const filtered = state.places.filter((p) => {
-    if (filter === "all") return true;
-    if (filter === "promos") return Boolean(p.promoText);
-    return p.amenity === filter;
+    if (state.filter === "all") return true;
+    if (state.filter === "promos") return Boolean(p.promoText);
+    return p.amenity === state.filter;
   });
 
   dom.countDisplay.textContent = filtered.length;
 
   if (filtered.length === 0) {
-    dom.resultsList.innerHTML = `<div class="empty-state">No se encontraron locales con este filtro en ${state.radius}m.</div>`;
+    dom.resultsList.innerHTML = `<div class="empty-state">No hay locales con este filtro dentro de ${state.radius >= 1000 ? state.radius / 1000 + " km" : state.radius + " m"}.</div>`;
     return;
   }
 
@@ -272,22 +258,21 @@ function renderPlaces() {
     const markerColor = hasPromo ? "#ff3b7f" : "#10b981";
 
     const marker = L.circleMarker([place.lat, place.lng], {
-      radius: hasPromo ? 9 : 7,
+      radius: hasPromo ? 10 : 7,
       color: "#ffffff",
       weight: 2,
       fillColor: markerColor,
       fillOpacity: 0.95
     }).addTo(placesLayer);
 
-    const popupHtml = `
-      <div style="font-family: 'Space Grotesk', sans-serif; min-width: 180px;">
+    marker.bindPopup(`
+      <div style="font-family: 'Space Grotesk', sans-serif; min-width: 170px;">
         <strong>${escapeHtml(place.name)}</strong><br/>
         <small style="opacity:0.8;">${escapeHtml(place.cuisine)} • ${place.dist} m</small>
-        ${hasPromo ? `<div style="margin-top:6px; color:#ff3b7f; font-weight:700;">🔥 ${escapeHtml(place.promoText)} <small>(Demo)</small></div>` : ""}
-        ${place.igTag ? `<div style="margin-top:4px; font-size:0.8em;">📸 IG: ${escapeHtml(place.igTag)}</div>` : ""}
+        ${hasPromo ? `<div style="margin-top:6px; color:#ff3b7f; font-weight:700;">🔥 ${escapeHtml(place.promoText)}</div>` : ""}
+        ${place.igTag ? `<div style="margin-top:4px; font-size:0.85em;">📸 ${escapeHtml(place.igTag)}</div>` : ""}
       </div>
-    `;
-    marker.bindPopup(popupHtml);
+    `);
 
     const card = document.createElement("div");
     card.className = "place-card";
@@ -297,7 +282,7 @@ function renderPlaces() {
         <span class="place-dist">${place.dist} m</span>
       </div>
       <div class="place-meta">🍽️ ${escapeHtml(place.cuisine)}</div>
-      ${place.igTag ? `<div class="ig-link">📸 Instagram detectado: ${escapeHtml(place.igTag)}</div>` : ""}
+      ${place.igTag ? `<div class="ig-link">📸 IG: ${escapeHtml(place.igTag)}</div>` : ""}
       ${hasPromo ? `
         <div class="promo-pill">
           <span>🔥 ${escapeHtml(place.promoText)}</span>
@@ -307,6 +292,10 @@ function renderPlaces() {
     `;
 
     card.addEventListener("click", () => {
+      // En móvil, baja el panel para ver bien el pin en el mapa
+      if (window.innerWidth < 900) {
+        setSheetState("peek");
+      }
       map.flyTo([place.lat, place.lng], 17, { duration: 0.8 });
       marker.openPopup();
     });
@@ -316,43 +305,97 @@ function renderPlaces() {
 }
 
 // =====================================================
-// Eventos de Interfaz
+// Gestos Táctiles del Bottom Sheet (iOS / Android)
 // =====================================================
+function setSheetState(nextState) {
+  state.sheetState = nextState;
+  dom.sheet.classList.remove("state-peek", "state-half", "state-full");
+  dom.sheet.classList.add(`state-${nextState}`);
+}
 
-// Selector de Radio (500m, 1km, 2km)
+let dragStartY = 0;
+let dragStartHeight = 0;
+let isDragging = false;
+
+dom.dragZone.addEventListener("touchstart", (e) => {
+  if (window.innerWidth >= 900 || e.target.closest("#btn-scan-mini")) return;
+  isDragging = true;
+  dragStartY = e.touches[0].clientY;
+  dragStartHeight = dom.sheet.getBoundingClientRect().height;
+  dom.sheet.classList.add("dragging");
+}, { passive: true });
+
+window.addEventListener("touchmove", (e) => {
+  if (!isDragging) return;
+  const deltaY = dragStartY - e.touches[0].clientY;
+  const vh = window.innerHeight;
+  const clamped = Math.max(96, Math.min(vh * 0.86, dragStartHeight + deltaY));
+  dom.sheet.style.height = `${clamped}px`;
+}, { passive: true });
+
+window.addEventListener("touchend", () => {
+  if (!isDragging) return;
+  isDragging = false;
+  dom.sheet.classList.remove("dragging");
+
+  const finalHeight = dom.sheet.getBoundingClientRect().height;
+  const vh = window.innerHeight;
+  dom.sheet.style.height = "";
+
+  if (finalHeight < vh * 0.28) setSheetState("peek");
+  else if (finalHeight < vh * 0.65) setSheetState("half");
+  else setSheetState("full");
+});
+
+// Tocar el título alterna el tamaño del panel
+dom.tapToggle.addEventListener("click", () => {
+  if (window.innerWidth >= 900) return;
+  const order = { peek: "half", half: "full", full: "peek" };
+  setSheetState(order[state.sheetState]);
+});
+
+// =====================================================
+// Controles Generales
+// =====================================================
 document.querySelectorAll(".pill").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".pill").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     state.radius = Number(btn.dataset.radius);
+    dom.radiusLabel.textContent = state.radius >= 1000 ? `${state.radius / 1000} km` : `${state.radius} m`;
     radarCircle.setRadius(state.radius);
     scanArea();
   });
 });
 
-dom.scanBtn.addEventListener("click", scanArea);
-dom.categoryFilter.addEventListener("change", renderPlaces);
+document.querySelectorAll(".chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+    chip.classList.add("active");
+    state.filter = chip.dataset.filter;
+    renderPlaces();
+  });
+});
 
-// Botón Valencia, VE
+dom.scanBtn.addEventListener("click", scanArea);
+dom.miniScanBtn.addEventListener("click", scanArea);
+
 document.getElementById("btn-valencia").addEventListener("click", () => {
   if (state.watchId !== null) navigator.geolocation.clearWatch(state.watchId);
   state.usingRealGps = false;
-  updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "UBICACIÓN SIMULADA // VALENCIA, VE");
+  updateUserPosition(VALENCIA_COORDS.lat, VALENCIA_COORDS.lng, "VALENCIA, VE (DEMO)");
   map.flyTo([VALENCIA_COORDS.lat, VALENCIA_COORDS.lng], 15, { duration: 1 });
   scanArea();
 });
 
-// Botón GPS Real
-document.getElementById("btn-gps").addEventListener("click", () => {
-  startLiveGPS();
-});
+document.getElementById("btn-gps").addEventListener("click", startLiveGPS);
 
-// Modo Día / Noche
 dom.themeBtn.addEventListener("click", () => {
   const isDark = state.theme === "dark";
   state.theme = isDark ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", state.theme);
   dom.themeIcon.textContent = isDark ? "🌙" : "☀️";
+  document.querySelector('meta[name="theme-color"]').setAttribute("content", isDark ? "#f8fafc" : "#050811");
 
   if (isDark) {
     map.removeLayer(TILE_LAYERS.dark);
@@ -365,11 +408,5 @@ dom.themeBtn.addEventListener("click", () => {
   }
 });
 
-// Minimizar panel lateral en móvil/desktop
-dom.togglePanelBtn.addEventListener("click", () => {
-  dom.sidebar.classList.toggle("collapsed");
-  dom.togglePanelBtn.textContent = dom.sidebar.classList.contains("collapsed") ? "▴" : "▾";
-});
-
-// Arranque inicial
+// Arrancar
 startLiveGPS();
