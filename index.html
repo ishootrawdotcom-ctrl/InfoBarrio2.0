@@ -9,9 +9,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <title>InfoBarrio // Radar Urbano en Tiempo Real</title>
 
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -19,18 +17,17 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Mapa Pantalla Completa -->
   <div id="map"></div>
   <div class="hud-scanlines" aria-hidden="true"></div>
 
-  <!-- Cabecera Flotante Minimalista -->
+  <!-- Cabecera Flotante -->
   <header class="mobile-topbar glass-panel">
     <div class="brand">
       <div class="pulse-dot"></div>
       <div class="brand-text">
         <div class="brand-title-row">
           <h1>INFOBARRIO</h1>
-          <span class="badge-beta">LIVE</span>
+          <span class="badge-beta">REAL DATA</span>
         </div>
         <p id="status-text" class="mono-text">CONECTANDO GPS...</p>
       </div>
@@ -38,7 +35,7 @@
     <span id="scan-source-badge" class="source-tag mono-text">LISTO</span>
   </header>
 
-  <!-- Botones Flotantes para el Pulgar (Derecha) -->
+  <!-- Botones Flotantes Derecha -->
   <div class="map-fab-stack">
     <button id="btn-theme" class="fab-btn glass-panel" title="Modo Día / Noche" aria-label="Cambiar tema">
       <span id="theme-icon">☀️</span>
@@ -46,20 +43,19 @@
     <button id="btn-gps" class="fab-btn primary glass-panel" title="Mi ubicación GPS real" aria-label="Mi GPS">
       <span>🎯</span>
     </button>
-    <button id="btn-valencia" class="fab-btn glass-panel" title="Probar en Valencia, VE" aria-label="Valencia">
+    <button id="btn-valencia" class="fab-btn glass-panel" title="Probar en Valencia Centro / El Viñedo" aria-label="Valencia">
       <span class="fab-label">VE</span>
     </button>
   </div>
 
-  <!-- Hoja Inferior Deslizable (Bottom Sheet Estilo Nativo) -->
+  <!-- Hoja Inferior Deslizable -->
   <section id="bottom-sheet" class="bottom-sheet glass-panel state-half">
-    <!-- Zona táctil para arrastrar arriba/abajo -->
     <div id="sheet-drag-zone" class="sheet-drag-zone">
       <div class="drag-pill" aria-hidden="true"></div>
       <div class="sheet-header-row">
         <div class="sheet-title-wrap" id="sheet-tap-toggle">
-          <span class="section-label mono-text">RADAR • <span id="active-radius-label">1 km</span></span>
-          <h2><span id="count-display">0</span> Lugares Cerca</h2>
+          <span class="section-label mono-text">RADAR REAL • <span id="active-radius-label">1 km</span></span>
+          <h2><span id="count-display">0</span> Locales Reales</h2>
         </div>
         <button id="btn-scan-mini" class="mini-scan-btn" aria-label="Escanear ahora">
           <span class="scan-spinner"></span>
@@ -68,9 +64,7 @@
       </div>
     </div>
 
-    <!-- Contenido Scrolleable -->
     <div class="sheet-scroll" id="sheet-scroll">
-      <!-- Telemetría compacta -->
       <div class="telemetry-strip mono-text">
         <span>📡 <strong id="coords-display">---, ---</strong></span>
         <span id="gps-accuracy-pill" class="acc-pill">RADAR ACTIVO</span>
@@ -78,42 +72,41 @@
 
       <!-- Radio de Escaneo -->
       <div class="control-block">
-        <span class="control-label mono-text">RADIO DEL RADAR</span>
+        <span class="control-label mono-text">RADIO DE BÚSQUEDA</span>
         <div class="radius-pills">
           <button class="pill" data-radius="500">500 m</button>
           <button class="pill active" data-radius="1000">1 km</button>
           <button class="pill" data-radius="2000">2 km</button>
+          <button class="pill" data-radius="5000">5 km</button>
         </div>
       </div>
 
-      <!-- Filtros en Burbujas Horizontales -->
+      <!-- Filtros Reales -->
       <div class="control-block">
         <span class="control-label mono-text">CATEGORÍA</span>
         <div class="filter-chips" id="filter-chips">
           <button class="chip active" data-filter="all">Todos</button>
-          <button class="chip promo-chip" data-filter="promos">🔥 Promos (Demo)</button>
-          <button class="chip" data-filter="fast_food">🍔 Callejera / Rápida</button>
           <button class="chip" data-filter="restaurant">🍽️ Restaurantes</button>
+          <button class="chip" data-filter="fast_food">🍔 Comida Rápida</button>
+          <button class="chip" data-filter="shop">🥐 Panaderías / Tiendas</button>
           <button class="chip" data-filter="cafe">☕ Cafés</button>
+          <button class="chip social-chip" data-filter="social">📸 Con Redes / Web</button>
         </div>
       </div>
 
-      <!-- Botón Principal -->
       <button id="btn-scan" class="scan-action-btn">
         <span class="scan-spinner"></span>
-        <span id="scan-btn-text">⚡ ESCANEAR ZONA EN VIVO</span>
+        <span id="scan-btn-text">⚡ ESCANEAR LOCALES REALES</span>
       </button>
 
-      <!-- Feed de Locales -->
       <div id="results-list" class="results-list">
         <div class="empty-state">
-          Pulsa <strong>ESCANEAR ZONA EN VIVO</strong> para detectar locales y promociones alrededor.
+          Pulsa <strong>ESCANEAR LOCALES REALES</strong> para buscar comercios registrados en el mapa alrededor tuyo.
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>
 </body>
